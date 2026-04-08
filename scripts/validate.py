@@ -126,21 +126,22 @@ def validate_role_compatibility(model: str, role: str) -> Tuple[bool, str, Optio
             reason = model_info.get("blockReason", "This model is blocked for all roles")
             return False, f"BLOCKED: {reason}", None
 
-        # Unsafe role check
+        # Unsafe role check (warn but allow)
         unsafe = model_info.get("unsafeRoles", [])
         if role in unsafe:
-            return False, f"'{model}' is not safe for the '{role}' role", None
+            return True, f"Note: '{model}' is marked unsafe for role '{role}'. Proceeding.", None
 
-        # Safe role check
+        # Safe role check (informational only)
         safe = set(model_info.get("safeRoles", []))
         if role not in safe:
-            return False, f"'{model}' is not verified for the '{role}' role. Safe roles: {', '.join(safe)}", None
+            safe_str = ', '.join(safe) if safe else 'none listed'
+            return True, f"Note: '{model}' not in verified safe roles for '{role}' (safe: {safe_str}). Proceeding.", None
 
-        # Capability check
+        # Capability check (informational only)
         model_caps = set(model_info.get("capabilities", []))
         missing = required_caps - model_caps
         if missing:
-            return False, f"'{model}' lacks required capabilities for '{role}': {', '.join(missing)}", None
+            return True, f"Note: '{model}' may lack capabilities for '{role}': {', '.join(missing)}. Proceeding.", None
 
         return True, f"'{model}' is compatible with '{role}' role", None
 

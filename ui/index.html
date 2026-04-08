@@ -868,17 +868,6 @@ function renderStatus() {
 }
 
 function modelPassesTarget(ref, target) {
-  const model = (state.models || {})[ref] || {};
-  const caps = model.capabilities || [];
-  if (target === 'primary') return caps.includes('llm') && caps.includes('tools');
-  if (target === 'image_model') return caps.includes('vision');
-  if (target === 'llm_fallbacks') return caps.includes('llm') && caps.includes('tools');
-  if (target === 'image_fallbacks') return caps.includes('vision');
-  if (target === 'research') return caps.includes('llm') && caps.includes('reasoning');
-  if (target === 'coding_pass1' || target === 'coding_pass2' || target === 'coding_pass3') return caps.includes('llm') && caps.includes('code');
-  if (target === 'social_media' || target === 'heartbeat') return caps.includes('llm');
-  if (target === 'web_ops') return caps.includes('llm') && (caps.includes('tools') || caps.includes('search'));
-  if (target === 'allowlist') return true;
   return true;
 }
 

@@ -6,8 +6,9 @@
 
 set -euo pipefail
 
-OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
-BACKUP_DIR="$HOME/.openclaw/model-backups"
+SWITCHBOARD_BASE="${SWITCHBOARD_BASE:-$HOME/.openclaw}"
+OPENCLAW_CONFIG="${SWITCHBOARD_CONFIG:-$SWITCHBOARD_BASE/openclaw.json}"
+BACKUP_DIR="${SWITCHBOARD_BACKUP_DIR:-$SWITCHBOARD_BASE/model-backups}"
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VALIDATE="$SKILL_DIR/scripts/validate.py"
 REDUNDANCY="$SKILL_DIR/scripts/redundancy.py"

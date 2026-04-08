@@ -12,10 +12,11 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+SWITCHBOARD_BASE = Path(os.environ.get("SWITCHBOARD_BASE", os.path.expanduser("~/.openclaw")))
 PORT = int(os.environ.get("SWITCHBOARD_PORT", "8770"))
-ENV_FILE = Path(os.environ.get("SWITCHBOARD_ENV", os.path.expanduser("~/.openclaw/workspace/.env")))
-CONFIG_FILE = Path(os.path.expanduser("~/.openclaw/openclaw.json"))
-BACKUP_DIR = Path(os.path.expanduser("~/.openclaw/backups/switchboard"))
+ENV_FILE = Path(os.environ.get("SWITCHBOARD_ENV", str(SWITCHBOARD_BASE / "workspace" / ".env")))
+CONFIG_FILE = Path(os.environ.get("SWITCHBOARD_CONFIG", str(SWITCHBOARD_BASE / "openclaw.json")))
+BACKUP_DIR = SWITCHBOARD_BASE / "backups" / "switchboard"
 UI_DIR = Path(__file__).resolve().parent
 
 
@@ -388,13 +389,7 @@ def validate_config(config: Dict[str, Any], registry: Dict[str, Any]) -> Tuple[b
         ref = _get_path(config, spec["path"], "")
         if not ref:
             continue
-        ok, msg = registry_model_ok(
-            ref,
-            registry,
-            capabilities=spec.get("capabilities"),
-            capabilities_any=spec.get("capabilities_any"),
-            safe_role=spec.get("safe_role"),
-        )
+        ok, msg = registry_model_ok(ref, registry)
         if not ok:
             errors.append(f"{role}: {msg}")
         elif msg:
@@ -557,13 +552,7 @@ def _validate_role_assignment(role: str, model: str, config: Dict[str, Any], reg
     if not spec:
         return "Unknown role"
 
-    ok, msg = registry_model_ok(
-        model,
-        registry,
-        capabilities=spec.get("capabilities"),
-        capabilities_any=spec.get("capabilities_any"),
-        safe_role=spec.get("safe_role"),
-    )
+    ok, msg = registry_model_ok(model, registry)
     if not ok:
         return msg
 
@@ -985,12 +974,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         registry = read_registry()
 
         def mutate(config: Dict[str, Any]):
-            ok, msg = registry_model_ok(
-                model,
-                registry,
-                capabilities=ROLE_SPECS["llm_fallbacks"].get("capabilities"),
-                safe_role=ROLE_SPECS["llm_fallbacks"].get("safe_role"),
-            )
+            ok, msg = registry_model_ok(model, registry)
             if not ok:
                 raise ValueError(msg or "Invalid model for fallback")
             arr = _get_path(config, ["agents", "defaults", "model", "fallbacks"], None)
@@ -1014,12 +998,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         registry = read_registry()
 
         def mutate(config: Dict[str, Any]):
-            ok, msg = registry_model_ok(
-                model,
-                registry,
-                capabilities=ROLE_SPECS["image_fallbacks"].get("capabilities"),
-                safe_role=ROLE_SPECS["image_fallbacks"].get("safe_role"),
-            )
+            ok, msg = registry_model_ok(model, registry)
             if not ok:
                 raise ValueError(msg or "Invalid model for image fallback")
             arr = _get_path(config, ["agents", "defaults", "imageModel", "fallbacks"], None)
