@@ -16,6 +16,7 @@ SWITCHBOARD_BASE = Path(os.environ.get("SWITCHBOARD_BASE", os.path.expanduser("~
 PORT = int(os.environ.get("SWITCHBOARD_PORT", "8770"))
 ENV_FILE = Path(os.environ.get("SWITCHBOARD_ENV", str(SWITCHBOARD_BASE / "workspace" / ".env")))
 CONFIG_FILE = Path(os.environ.get("SWITCHBOARD_CONFIG", str(SWITCHBOARD_BASE / "openclaw.json")))
+ROLES_FILE = SWITCHBOARD_BASE / "switchboard-roles.json"
 BACKUP_DIR = SWITCHBOARD_BASE / "backups" / "switchboard"
 UI_DIR = Path(__file__).resolve().parent
 
@@ -189,6 +190,21 @@ def read_config() -> Dict[str, Any]:
         return {}
 
 
+def read_roles() -> Dict[str, str]:
+    """Read switchboard custom roles from the standalone roles file."""
+    try:
+        data = json.loads(ROLES_FILE.read_text(encoding="utf-8"))
+        return data.get("roles", {})
+    except Exception:
+        return {}
+
+
+def write_roles(roles: Dict[str, str]) -> None:
+    """Write switchboard custom roles to the standalone roles file."""
+    ROLES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ROLES_FILE.write_text(json.dumps({"roles": roles}, indent=2) + "\n", encoding="utf-8")
+
+
 def validate_model_ref(ref: Any) -> bool:
     return isinstance(ref, str) and bool(MODEL_RE.match(ref)) and len(ref) < 220
 
@@ -330,8 +346,9 @@ def _collect_referenced_models(config: Dict[str, Any]) -> List[str]:
     if isinstance(image_primary, str) and image_primary:
         refs.append(image_primary)
 
+    roles = read_roles()
     for role in SWITCHBOARD_ROLES:
-        rv = _get_path(config, ["switchboard", "roles", role], "")
+        rv = roles.get(role, "")
         if isinstance(rv, str) and rv:
             refs.append(rv)
 
@@ -383,10 +400,14 @@ def validate_config(config: Dict[str, Any], registry: Dict[str, Any]) -> Tuple[b
         )
 
     # Validate role model requirements when model is known.
+    sb_roles = read_roles()
     for role, spec in ROLE_SPECS.items():
         if spec.get("is_list"):
             continue
-        ref = _get_path(config, spec["path"], "")
+        if role in SWITCHBOARD_ROLES:
+            ref = sb_roles.get(role, "")
+        else:
+            ref = _get_path(config, spec["path"], "")
         if not ref:
             continue
         ok, msg = registry_model_ok(ref, registry)
@@ -396,9 +417,10 @@ def validate_config(config: Dict[str, Any], registry: Dict[str, Any]) -> Tuple[b
             warnings.append(f"{role}: {msg}")
 
     # Coding provider diversity.
-    cp1 = _get_path(config, ["switchboard", "roles", "coding_pass1"], "")
-    cp2 = _get_path(config, ["switchboard", "roles", "coding_pass2"], "")
-    cp3 = _get_path(config, ["switchboard", "roles", "coding_pass3"], "")
+    roles = read_roles()
+    cp1 = roles.get("coding_pass1", "")
+    cp2 = roles.get("coding_pass2", "")
+    cp3 = roles.get("coding_pass3", "")
     assigned = [m for m in [cp1, cp2, cp3] if isinstance(m, str) and m]
     if len(assigned) >= 2:
         providers = [provider_of(x) for x in assigned]
@@ -557,10 +579,11 @@ def _validate_role_assignment(role: str, model: str, config: Dict[str, Any], reg
         return msg
 
     if role.startswith("coding_pass"):
+        sb_roles = read_roles()
         roles = {
-            "coding_pass1": _get_path(config, ["switchboard", "roles", "coding_pass1"], ""),
-            "coding_pass2": _get_path(config, ["switchboard", "roles", "coding_pass2"], ""),
-            "coding_pass3": _get_path(config, ["switchboard", "roles", "coding_pass3"], ""),
+            "coding_pass1": sb_roles.get("coding_pass1", ""),
+            "coding_pass2": sb_roles.get("coding_pass2", ""),
+            "coding_pass3": sb_roles.get("coding_pass3", ""),
         }
         roles[role] = model
         providers = [provider_of(v) for v in roles.values() if isinstance(v, str) and v]
@@ -748,7 +771,8 @@ def build_status() -> Dict[str, Any]:
     if not isinstance(image_fallbacks, list):
         image_fallbacks = []
 
-    roles = {r: _get_path(config, ["switchboard", "roles", r], "") for r in SWITCHBOARD_ROLES}
+    sb_roles = read_roles()
+    roles = {r: sb_roles.get(r, "") for r in SWITCHBOARD_ROLES}
 
     allow_obj = _get_path(config, ["agents", "defaults", "models"], {})
     allowlist = list(allow_obj.keys()) if isinstance(allow_obj, dict) else []
@@ -924,14 +948,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             raise ValueError("model must be a string")
 
         registry = read_registry()
+        config = read_config()
+        err = _validate_role_assignment(role, model, config, registry)
+        if err:
+            return {"ok": False, "error": err}
 
-        def mutate(config: Dict[str, Any]):
-            err = _validate_role_assignment(role, model, config, registry)
-            if err:
-                raise ValueError(err)
-            _set_path(config, ["switchboard", "roles", role], model)
-            _ensure_allowlist_has(config, [model])
+        # Write role to standalone roles file (not openclaw.json)
+        roles = read_roles()
+        roles[role] = model
+        write_roles(roles)
 
+        # Still ensure model is in the openclaw.json allowlist
+        def mutate(cfg: Dict[str, Any]):
+            _ensure_allowlist_has(cfg, [model])
         res = _mutate_config(mutate)
         if res.get("ok"):
             res.update({"role": role, "model": model})
@@ -1279,9 +1308,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     raise ValueError("No additional authenticated models available")
 
             elif issue == "coding_provider_collision":
-                cp1 = _get_path(config, ["switchboard", "roles", "coding_pass1"], "")
-                cp2 = _get_path(config, ["switchboard", "roles", "coding_pass2"], "")
-                cp3 = _get_path(config, ["switchboard", "roles", "coding_pass3"], "")
+                sb_roles = read_roles()
+                cp1 = sb_roles.get("coding_pass1", "")
+                cp2 = sb_roles.get("coding_pass2", "")
+                cp3 = sb_roles.get("coding_pass3", "")
                 if not cp1:
                     raise ValueError("coding_pass1 must be set first")
                 p1 = provider_of(cp1)
@@ -1297,7 +1327,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     raise ValueError("No alternative provider available for coding_pass2")
                 if not cp2 or provider_of(cp2) == p1:
                     cp2 = picks2[0]
-                    _set_path(config, ["switchboard", "roles", "coding_pass2"], cp2)
+                    sb_roles["coding_pass2"] = cp2
 
                 used = {provider_of(cp1), provider_of(cp2)}
                 picks3 = [
@@ -1315,7 +1345,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     raise ValueError("No third provider available for coding_pass3")
                 if not cp3 or provider_of(cp3) in used:
                     cp3 = picks3[0]
-                    _set_path(config, ["switchboard", "roles", "coding_pass3"], cp3)
+                    sb_roles["coding_pass3"] = cp3
+                write_roles(sb_roles)
                 _ensure_allowlist_has(config, [cp2, cp3])
 
             elif issue.startswith("missing_role:"):
@@ -1323,13 +1354,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if role not in SWITCHBOARD_ROLES:
                     raise ValueError("Unknown role for auto-fix")
                 spec = ROLE_SPECS[role]
-                cur = _get_path(config, spec["path"], "")
+                sb_roles = read_roles()
+                cur = sb_roles.get(role, "")
                 if cur:
                     return
                 exclude_providers = set()
                 if role in {"coding_pass2", "coding_pass3"}:
-                    cp1 = _get_path(config, ["switchboard", "roles", "coding_pass1"], "")
-                    cp2 = _get_path(config, ["switchboard", "roles", "coding_pass2"], "")
+                    cp1 = sb_roles.get("coding_pass1", "")
+                    cp2 = sb_roles.get("coding_pass2", "")
                     if role == "coding_pass2" and cp1:
                         exclude_providers.add(provider_of(cp1))
                     if role == "coding_pass3":
@@ -1347,7 +1379,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 picks = [m for m in picks if provider_of(m) not in exclude_providers]
                 if not picks:
                     raise ValueError(f"No authenticated candidate found for role {role}")
-                _set_path(config, spec["path"], picks[0])
+                sb_roles[role] = picks[0]
+                write_roles(sb_roles)
                 _ensure_allowlist_has(config, [picks[0]])
 
             else:
@@ -1397,10 +1430,35 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return
 
 
+def _migrate_switchboard_key():
+    """One-time migration: move switchboard.roles from openclaw.json to standalone file."""
+    try:
+        config = read_config()
+        sb = config.get("switchboard")
+        if not isinstance(sb, dict):
+            return
+        old_roles = sb.get("roles", {})
+        if old_roles:
+            # Merge with any existing roles file (don't overwrite)
+            current = read_roles()
+            for k, v in old_roles.items():
+                if k not in current:
+                    current[k] = v
+            write_roles(current)
+        # Remove the switchboard key from openclaw.json
+        del config["switchboard"]
+        CONFIG_FILE.write_text(json.dumps(config, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+        print(f"Migrated switchboard.roles from openclaw.json to {ROLES_FILE}")
+    except Exception as exc:
+        print(f"Warning: switchboard migration failed: {exc}")
+
+
 if __name__ == "__main__":
+    _migrate_switchboard_key()
     print(f"Model Switchboard v2 server listening on http://127.0.0.1:{PORT}")
     print(f"Config:   {CONFIG_FILE}")
     print(f"Registry: {REGISTRY_FILE}")
+    print(f"Roles:    {ROLES_FILE}")
     print(f"Env:      {ENV_FILE}")
     print(f"Backups:  {BACKUP_DIR}")
     server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
