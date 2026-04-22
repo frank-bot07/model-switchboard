@@ -542,7 +542,14 @@ let state = null;
 let pickerCtx = { target: null, selected: null };
 let providerCtx = null;
 
-function esc(v) { return String(v == null ? '' : v); }
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 function providerOf(ref) { return (ref || '').includes('/') ? ref.split('/')[0] : ''; }
 
 function toast(msg, ok = true) {
