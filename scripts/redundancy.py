@@ -12,12 +12,14 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
+from functools import lru_cache
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = SKILL_DIR / "model-registry.json"
 CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
 
 
+@lru_cache(maxsize=None)
 def load_registry() -> Dict[str, Any]:
     """Load model registry."""
     try:
@@ -28,6 +30,7 @@ def load_registry() -> Dict[str, Any]:
         return {"models": {}, "providers": {}, "roles": {}}
 
 
+@lru_cache(maxsize=None)
 def detect_available_providers() -> Dict[str, Dict[str, Any]]:
     """
     Detect which providers have auth configured.
