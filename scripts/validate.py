@@ -342,7 +342,7 @@ def validate_cron_models() -> Dict[str, Any]:
     config = load_config(strict=False)
     agents = config.get("agents", {}).get("defaults", {})
     raw_models = agents.get("models")
-    allowlist = set(raw_models.keys()) if isinstance(raw_models, dict) else set()
+    allowlist = set(raw_models) if isinstance(raw_models, dict) else set()
 
     for job in jobs:
         if not isinstance(job, dict):
@@ -409,7 +409,7 @@ def get_full_status() -> Dict[str, Any]:
 
     # Allowlist (safe: handle non-dict types)
     raw_models = agents.get("models")
-    allowlist = list(raw_models.keys()) if isinstance(raw_models, dict) else []
+    allowlist = list(raw_models) if isinstance(raw_models, dict) else []
 
     # Provider auth status
     provider_status = {}
@@ -438,7 +438,7 @@ def get_full_status() -> Dict[str, Any]:
         "providers": provider_status,
         "backupCount": backup_count,
         "issues": issues,
-        "registryModels": list(registry.get("models", {}).keys()),
+        "registryModels": list(registry.get("models", {})),
         "timestamp": __import__("datetime").datetime.now().isoformat()
     }
 
