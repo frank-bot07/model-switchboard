@@ -2,13 +2,13 @@
 """Model Switchboard v2 backend for OpenClaw (stdlib-only)."""
 
 import copy
-import http.server
 import json
 import os
 import re
 import shutil
 import time
 import urllib.parse
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -852,7 +852,7 @@ def health_check() -> Dict[str, Any]:
     }
 
 
-class Handler(http.server.SimpleHTTPRequestHandler):
+class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(UI_DIR), **kwargs)
 
@@ -1461,7 +1461,7 @@ if __name__ == "__main__":
     print(f"Roles:    {ROLES_FILE}")
     print(f"Env:      {ENV_FILE}")
     print(f"Backups:  {BACKUP_DIR}")
-    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
+    server = HTTPServer(("127.0.0.1", PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
