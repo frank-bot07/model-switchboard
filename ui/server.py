@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import re
+import shlex
 import shutil
 import time
 import urllib.parse
@@ -138,10 +139,20 @@ def read_env() -> Dict[str, str]:
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if key:
-            values[key] = value.strip().strip('"').strip("'")
+        try:
+            parts = shlex.split(line)
+            if not parts:
+                continue
+            for part in parts:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    values[k] = v
+        except ValueError:
+            # Fallback for malformed lines
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key:
+                values[key] = value.strip().strip('"').strip("'")
     return values
 
 
@@ -151,14 +162,15 @@ def write_env_key(key: str, value: str) -> None:
     pat = re.compile(rf"^{re.escape(key)}\s*=")
     out: List[str] = []
     replaced = False
+    quoted_val = shlex.quote(value)
     for line in lines:
         if pat.match(line.strip()):
-            out.append(f'{key}="{value}"')
+            out.append(f"{key}={quoted_val}")
             replaced = True
         else:
             out.append(line)
     if not replaced:
-        out.append(f'{key}="{value}"')
+        out.append(f"{key}={quoted_val}")
     ENV_FILE.write_text("\n".join(out) + "\n", encoding="utf-8")
     os.chmod(str(ENV_FILE), 0o600)
 
