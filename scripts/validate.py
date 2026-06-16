@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -30,6 +31,7 @@ class ConfigLoadError(Exception):
     pass
 
 
+@lru_cache(maxsize=None)
 def load_registry(strict: bool = True) -> Dict[str, Any]:
     """
     Load the model registry.
