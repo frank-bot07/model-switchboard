@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -130,19 +131,38 @@ SWITCHBOARD_ROLES = [
 ]
 
 
+_ENV_CACHE: Dict[str, str] = {}
+_ENV_MTIME: float = -1.0
+_ENV_LOCK = threading.Lock()
+
+
 def read_env() -> Dict[str, str]:
-    values: Dict[str, str] = {}
-    if not ENV_FILE.exists():
-        return values
-    for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if key:
-            values[key] = value.strip().strip('"').strip("'")
-    return values
+    global _ENV_MTIME, _ENV_CACHE
+    with _ENV_LOCK:
+        try:
+            st = ENV_FILE.stat()
+            if st.st_mtime == _ENV_MTIME:
+                return _ENV_CACHE.copy()
+            new_mtime = st.st_mtime
+        except OSError:
+            _ENV_MTIME, _ENV_CACHE = -1.0, {}
+            return {}
+
+        try:
+            values: Dict[str, str] = {}
+            for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key:
+                    values[key] = value.strip().strip('"').strip("'")
+            _ENV_CACHE = values
+            _ENV_MTIME = new_mtime
+            return _ENV_CACHE.copy()
+        except OSError:
+            return _ENV_CACHE.copy()
 
 
 def write_env_key(key: str, value: str) -> None:
