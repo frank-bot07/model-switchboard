@@ -8,8 +8,8 @@ import re
 import shutil
 import threading
 import time
-import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -912,7 +912,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(UI_DIR), **kwargs)
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
+        parsed = urlparse(self.path)
         path = parsed.path
 
         if path == "/api/status":
@@ -934,7 +934,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
+        parsed = urlparse(self.path)
         payload = self._read_json_body()
         if payload is None:
             return
