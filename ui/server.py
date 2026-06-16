@@ -582,6 +582,41 @@ def _ensure_allowlist_has(config: Dict[str, Any], refs: List[str]) -> None:
             models.setdefault(ref, {})
 
 
+def _fix_missing_fallbacks(
+    config: Dict[str, Any],
+    registry: Dict[str, Any],
+    env: Dict[str, str],
+    role_name: str,
+    primary_role_name: str,
+) -> None:
+    role_spec = ROLE_SPECS[role_name]
+    primary_spec = ROLE_SPECS[primary_role_name]
+
+    primary = _get_path(config, primary_spec["path"], "")
+    arr = _get_path(config, role_spec["path"], [])
+    if not isinstance(arr, list):
+        arr = []
+
+    exclude = set(arr)
+    if isinstance(primary, str) and primary:
+        exclude.add(primary)
+
+    picks = _model_candidates(
+        registry,
+        env,
+        capabilities=role_spec["capabilities"],
+        safe_role=role_spec.get("safe_role"),
+        exclude=exclude,
+        exclude_provider=provider_of(primary) if primary else None,
+    )
+    if not picks:
+        raise ValueError(f"No authenticated candidates for {role_spec['label']}")
+
+    arr.append(picks[0])
+    _set_path(config, role_spec["path"], arr)
+    _ensure_allowlist_has(config, [picks[0]])
+
+
 def _validate_input_model(data: Dict[str, Any], key: str = "model") -> str:
     ref = data.get(key)
     if not isinstance(ref, str) or not validate_model_ref(ref):
@@ -1270,48 +1305,10 @@ class Handler(SimpleHTTPRequestHandler):
         def mutate(config: Dict[str, Any]):
             _normalize_channels(config)
             if issue == "no_llm_fallbacks":
-                primary = _get_path(config, ["agents", "defaults", "model", "primary"], "")
-                arr = _get_path(config, ["agents", "defaults", "model", "fallbacks"], [])
-                if not isinstance(arr, list):
-                    arr = []
-                exclude = set(arr)
-                if isinstance(primary, str) and primary:
-                    exclude.add(primary)
-                picks = _model_candidates(
-                    registry,
-                    env,
-                    capabilities=ROLE_SPECS["llm_fallbacks"]["capabilities"],
-                    safe_role=ROLE_SPECS["llm_fallbacks"].get("safe_role"),
-                    exclude=exclude,
-                    exclude_provider=provider_of(primary) if primary else None,
-                )
-                if not picks:
-                    raise ValueError("No authenticated candidates for LLM fallback")
-                arr.append(picks[0])
-                _set_path(config, ["agents", "defaults", "model", "fallbacks"], arr)
-                _ensure_allowlist_has(config, [picks[0]])
+                _fix_missing_fallbacks(config, registry, env, "llm_fallbacks", "primary")
 
             elif issue == "no_image_fallbacks":
-                primary = _get_path(config, ["agents", "defaults", "imageModel", "primary"], "")
-                arr = _get_path(config, ["agents", "defaults", "imageModel", "fallbacks"], [])
-                if not isinstance(arr, list):
-                    arr = []
-                exclude = set(arr)
-                if isinstance(primary, str) and primary:
-                    exclude.add(primary)
-                picks = _model_candidates(
-                    registry,
-                    env,
-                    capabilities=ROLE_SPECS["image_fallbacks"]["capabilities"],
-                    safe_role=ROLE_SPECS["image_fallbacks"].get("safe_role"),
-                    exclude=exclude,
-                    exclude_provider=provider_of(primary) if primary else None,
-                )
-                if not picks:
-                    raise ValueError("No authenticated candidates for image fallback")
-                arr.append(picks[0])
-                _set_path(config, ["agents", "defaults", "imageModel", "fallbacks"], arr)
-                _ensure_allowlist_has(config, [picks[0]])
+                _fix_missing_fallbacks(config, registry, env, "image_fallbacks", "image_model")
 
             elif issue == "small_allowlist":
                 models = _ensure_path(config, ["agents", "defaults", "models"])
